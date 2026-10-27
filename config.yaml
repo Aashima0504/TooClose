@@ -1,0 +1,86 @@
+# TooClose — single source of configuration.
+# All Python modules load this file. The frontend reads a public subset via GET /config.
+
+seed: 42
+
+server:
+  host: 127.0.0.1
+  port: 8000
+  cors_origins:
+    - http://localhost:5173
+    - http://127.0.0.1:5173
+    - http://localhost:4173
+    - http://127.0.0.1:4173
+  max_messages_per_second: 15
+  max_message_bytes: 65536
+  log_landmarks: false  # never log landmark payloads
+
+camera:
+  default_type: webcam  # webcam | phone
+  # Typical laptop webcam horizontal FOV. Phone cameras vary; 70–80° is a common default.
+  default_hfov_deg: 70.0
+  phone_hfov_deg: 75.0
+  default_width: 1280
+  default_height: 720
+
+anatomy:
+  # Average adult palm width (MCP index to MCP pinky), used by the pinhole distance model.
+  palm_width_cm: 8.5
+  # Approximate fingertip pad width used to convert pixels to ppi.
+  fingertip_width_mm: 15.0
+
+mediapipe:
+  max_hands: 2
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  num_landmarks: 21
+  # Selfie cameras present a mirrored preview. When true, TooClose processes the mirrored
+  # frame (so overlays match what the user sees) and then flips MediaPipe's handedness
+  # label so "Right" means the user's physical right hand. See hand_tracking.py.
+  selfie_mirror: true
+  model_path: models/hand_landmarker.task
+
+sharpness:
+  # Crop a square of side (crop_scale * DIP->TIP length in pixels) around each fingertip.
+  crop_scale: 1.5
+  resize: 64
+  laplacian_ksize: 3
+  # Variance of Laplacian on the 64x64 grayscale crop (Python OpenCV and JS canvas must match).
+
+risk:
+  # Physics-based continuous risk from estimated ppi at the fingertip.
+  # Below ppi_low ≈ "safe" (hard to capture usable prints). Above ppi_high ≈ "danger".
+  ppi_low: 150
+  ppi_high: 400
+  warning_threshold: 0.4
+  danger_threshold: 0.7
+  ema_alpha: 0.35
+  # Hysteresis band around class thresholds to avoid flicker.
+  hysteresis_enter: 0.05
+  hysteresis_exit: 0.08
+
+labeling:
+  source: physics  # physics | nfiq
+  nfiq_binary: null
+
+training:
+  n_estimators: 200
+  max_depth: 6
+  learning_rate: 0.08
+  min_samples_leaf: 20
+  group_by: subject_id
+  synthetic_subjects: 40
+  synthetic_sessions_per_subject: 4
+  synthetic_frames_per_session: 40
+
+paths:
+  data_dir: data
+  models_dir: models
+  model_file: models/risk_model.joblib
+  metrics_file: models/metrics.json
+  shap_global_plot: models/shap_global.png
+
+frontend:
+  ws_url: ws://127.0.0.1:8000/ws
+  send_hz: 15
+  sparkline_seconds: 10

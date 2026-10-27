@@ -1,0 +1,44 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Local secrets and env
+.env
+.env.*
+
+# Collection data (features, optional crops, NFIQ sidecars)
+data/
+data_crops/
+
+# Never commit raw frames or fingertip images from collection
+*.crop.png
+*.crop.jpg
+*.crop.jpeg
+*.crop.webp
+
+# Training CSVs only (joblib/metrics/plots may be committed)
+models/*.csv
+# Downloaded MediaPipe model (make model)
+models/*.task
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
