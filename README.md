@@ -3,9 +3,9 @@
 Local, real-time warning when fingertips are close enough to a camera that
 fingerprints could be captured.
 
-**Status:** Phase 1 scaffold. Video frames stay in this process (debug view) or
-in the browser (later phases). They are never written to disk and never sent to
-a remote server.
+**Status:** Phase 2 (features + sharpness). Video frames stay in this process
+(debug view) or in the browser (later phases). They are never written to disk
+and never sent to a remote server.
 
 Browsers only allow webcam access on **localhost** or **HTTPS**.
 
@@ -15,10 +15,13 @@ Python **3.11** is recommended (MediaPipe still lags on 3.13).
 
 ```bash
 make setup          # venv, pip, MediaPipe .task model, npm install
-make test           # config + /health smoke tests
+make test           # pytest + Vitest (features, sharpness Python↔JS)
 make debug          # OpenCV landmark viewer (q quit, m toggle mirror)
+make calibrate      # optional ruler check at 20 / 30 / 40 cm
 make dev            # FastAPI on 127.0.0.1:8000 + Vite on localhost:5173
 ```
+
+Feature math: `docs/feature_math.md`.
 
 - `GET http://127.0.0.1:8000/health` should return `{"status":"ok",...}`
 - `GET http://127.0.0.1:8000/config` should return the public config subset

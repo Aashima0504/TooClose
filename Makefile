@@ -5,7 +5,7 @@ BIN := $(VENV)/bin
 MODEL := models/hand_landmarker.task
 MODEL_URL := https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
 
-.PHONY: venv install model setup test train debug dev frontend server clean
+.PHONY: venv install model setup test train debug calibrate dev frontend server clean
 
 venv:
 	$(PYTHON) -m venv $(VENV)
@@ -29,12 +29,16 @@ setup: install
 
 test:
 	$(BIN)/pytest
+	npm --prefix frontend test
 
 train:
 	$(BIN)/python -m tooclose.train
 
 debug:
 	$(BIN)/python -m tooclose.debug_view
+
+calibrate:
+	$(BIN)/python scripts/calibrate_distance.py
 
 server:
 	$(BIN)/uvicorn tooclose.server:app --host 127.0.0.1 --port 8000 --reload --app-dir src

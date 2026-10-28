@@ -42,3 +42,4 @@ models/*.task
 
 # Logs
 *.log
+frontend/.cache-sharpness-case.json

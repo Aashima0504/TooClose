@@ -34,6 +34,7 @@ from tooclose.hand_tracking import (
     THUMB_IP,
     THUMB_MCP,
     WRIST,
+    mirror_landmarks_x,
 )
 
 Vec3 = tuple[float, float, float]
@@ -295,7 +296,13 @@ def extract_features(
     row["ppi"] = ppi_from_distance(distance, frame_width, hfov_deg)
     row["valid"] = distance is not None
 
-    n_palm = palmar_normal(landmarks, frame_width, frame_height, handedness)
+    # Pixel lengths are mirror-invariant. Palm winding is not: un-flip x so the
+    # left/right chirality correction matches the unmirrored camera frame.
+    geom = landmarks
+    if mirrored:
+        geom = mirror_landmarks_x([_as_xyz(p) for p in landmarks])
+
+    n_palm = palmar_normal(geom, frame_width, frame_height, handedness)
     row["palm_normal_x"], row["palm_normal_y"], row["palm_normal_z"] = n_palm
     cosine, angle, facing = pad_facing_metrics(n_palm)
     row["pad_facing_cos"] = cosine

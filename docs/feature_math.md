@@ -135,8 +135,12 @@ pad_facing_angle_deg = acos(clamp(pad_facing_cos, -1, 1)) * 180 / π
 pads_facing_camera   = pad_facing_cos > 0            # angle < 90°
 ```
 
-`features.py` does not re-interpret selfie mirroring. Landmarks are already in the
-processed (usually mirrored) frame; `handedness` is already the physical hand.
+Selfie mirror: landmarks are expressed in the processed (usually mirrored) frame,
+and `handedness` is already the physical hand. Horizontal flip reverses triangle
+winding, so `extract_features` **un-flips landmark x** (`x → 1 − x`) before this
+cross product. DIP→TIP pixel lengths are computed on the processed frame (mirror
+does not change distances). Test: a palm-facing right hand must still be
+`pads_facing_camera` after an x-flip with `mirrored=True`.
 
 ## 6. Finger curl
 
