@@ -20,6 +20,7 @@ import pandas as pd
 from tooclose.baseline import ppi_to_risk, risk_to_state
 from tooclose.config import AppConfig, load_config
 from tooclose.features import FINGER_NAMES, extract_features, focal_length_px
+from tooclose.labeling import label_row
 from tooclose.hand_tracking import (
     FINGER_DIP,
     FINGERTIPS,
@@ -52,7 +53,10 @@ from tooclose.hand_tracking import (
 _FINGER_SPREAD_CM = (-1.4, 0.0, 1.4, 2.7)  # index, middle, ring, pinky relative to center
 
 
-def create_canonical_hand_3d(handedness: str = "Right") -> np.ndarray:
+def create_canonical_hand_3d(
+    handedness: str = "Right",
+    palm_width_cm: float = 8.5,
+) -> np.ndarray:
     """Return canonical 3D coordinates (21, 3) in centimeters.
 
     Convention:
@@ -61,32 +65,44 @@ def create_canonical_hand_3d(handedness: str = "Right") -> np.ndarray:
     - Wrist at (0, 0, 0).
     - Fingers extend upwards in +Y.
     - Palmar side faces -Z (toward camera when camera looks along +Z).
+    - Distance between INDEX_MCP and PINKY_MCP equals ``palm_width_cm`` exactly.
+    - Whole hand scale is consistent: wrist to middle fingertip ~18 cm,
+      DIP->TIP lengths ~2.0 to 2.5 cm.
     """
     pts = np.zeros((21, 3), dtype=np.float64)
     side = 1.0 if handedness.capitalize() == "Right" else -1.0
+    scale = palm_width_cm / 8.5
+
+    # Span between index MCP and pinky MCP along X is exactly palm_width_cm
+    idx_x = -0.5 * palm_width_cm * side
+    mid_x = -0.16 * palm_width_cm * side
+    rng_x = 0.17 * palm_width_cm * side
+    pnk_x = 0.5 * palm_width_cm * side
 
     pts[WRIST] = [0.0, 0.0, 0.0]
 
-    # Thumb
-    thumb_x = -2.8 * side
-    pts[THUMB_CMC] = [thumb_x, 1.5, -0.4]
-    pts[THUMB_MCP] = [thumb_x - 0.7 * side, 3.2, -0.8]
-    pts[THUMB_IP] = [thumb_x - 1.2 * side, 4.8, -1.2]
-    pts[THUMB_TIP] = [thumb_x - 1.6 * side, 6.2, -1.6]
+    # Thumb: CMC, MCP, IP, TIP
+    thumb_x = -3.5 * side * scale
+    pts[THUMB_CMC] = [thumb_x, 2.0 * scale, -0.5 * scale]
+    pts[THUMB_MCP] = [thumb_x - 1.2 * side * scale, 4.2 * scale, -1.0 * scale]
+    pts[THUMB_IP] = [thumb_x - 2.0 * side * scale, 6.4 * scale, -1.5 * scale]
+    pts[THUMB_TIP] = [thumb_x - 2.6 * side * scale, 8.5 * scale, -2.0 * scale]
 
     # 4 fingers: mcp, pip, dip, tip
+    # MCP Y at 8.5 * scale cm from wrist; middle MCP slightly higher
+    mcp_y = 8.5 * scale
     finger_joints = [
-        (INDEX_MCP, INDEX_PIP, INDEX_DIP, INDEX_TIP, _FINGER_SPREAD_CM[0] * side, 7.8),
-        (MIDDLE_MCP, MIDDLE_PIP, MIDDLE_DIP, MIDDLE_TIP, _FINGER_SPREAD_CM[1] * side, 8.4),
-        (RING_MCP, RING_PIP, RING_DIP, RING_TIP, _FINGER_SPREAD_CM[2] * side, 7.7),
-        (PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP, _FINGER_SPREAD_CM[3] * side, 6.2),
+        (INDEX_MCP, INDEX_PIP, INDEX_DIP, INDEX_TIP, idx_x, mcp_y, 9.0 * scale),
+        (MIDDLE_MCP, MIDDLE_PIP, MIDDLE_DIP, MIDDLE_TIP, mid_x, mcp_y + 0.3 * scale, 9.5 * scale),
+        (RING_MCP, RING_PIP, RING_DIP, RING_TIP, rng_x, mcp_y, 9.0 * scale),
+        (PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP, pnk_x, mcp_y, 7.5 * scale),
     ]
 
-    for mcp_idx, pip_idx, dip_idx, tip_idx, x_offset, length in finger_joints:
-        pts[mcp_idx] = [x_offset, 4.0, 0.0]
-        pts[pip_idx] = [x_offset, 4.0 + length * 0.45, 0.0]
-        pts[dip_idx] = [x_offset, 4.0 + length * 0.75, 0.0]
-        pts[tip_idx] = [x_offset, 4.0 + length * 1.00, 0.0]
+    for mcp_idx, pip_idx, dip_idx, tip_idx, x_pos, y_mcp, length in finger_joints:
+        pts[mcp_idx] = [x_pos, y_mcp, 0.0]
+        pts[pip_idx] = [x_pos, y_mcp + length * 0.45, 0.0]
+        pts[dip_idx] = [x_pos, y_mcp + length * 0.75, 0.0]
+        pts[tip_idx] = [x_pos, y_mcp + length * 1.00, 0.0]
 
     return pts
 
@@ -143,10 +159,10 @@ def project_to_mediapipe(
     # Shift hand to distance_cm
     pts_in_cam = pts_cm.copy()
     pts_in_cam[:, 0] += center_offset_x_cm
-    pts_in_cam[:, 1] += center_offset_y_cm
-    # Note: MediaPipe Y increases downward on image, but hand extends up (+Y).
-    # Flip Y so hand finger tips are higher up on screen (smaller y).
-    pts_in_cam[:, 1] = -pts_in_cam[:, 1]
+    # Center vertically on the palm / MCP plane (~8.5 cm from wrist) so full hand
+    # spans roughly [-9.5 cm, +8.5 cm] around camera optical center.
+    palm_center_y_cm = 8.5
+    pts_in_cam[:, 1] = -(pts_in_cam[:, 1] - palm_center_y_cm) + center_offset_y_cm
     pts_in_cam[:, 2] += distance_cm
 
     wrist_z = pts_in_cam[WRIST, 2]
@@ -183,11 +199,21 @@ def simulate_hand_frame(
     hfov_deg: float,
     camera_type: str,
     rng: np.random.Generator,
-    landmark_noise_std: float = 0.003,
+    palm_width_cm: float = 8.5,
+    landmark_noise_std: float = 0.0010,
 ) -> tuple[list[list[float]], dict[str, float], float]:
-    """Generate one frame's landmarks, simulated sharpness, and confidence."""
-    hand_3d = create_canonical_hand_3d(handedness)
-    rotated = rotate_hand_3d(hand_3d, pitch_deg, yaw_deg, roll_deg)
+    """Generate one frame's landmarks, simulated sharpness, and confidence.
+
+    Landmark noise defaults to 0.0010 (~1.9 px at 1080p, ~1.3 px at 720p),
+    matching observed MediaPipe tracking jitter. Rotation is centered on the
+    palm MCP midpoint so tilt doesn't artificially shift the hand toward/away
+    from the camera at close distances.
+    """
+    hand_3d = create_canonical_hand_3d(handedness, palm_width_cm=palm_width_cm)
+    # Rotate around the palm MCP midpoint (landmarks 5 and 17) rather than the wrist
+    mcp_center = (hand_3d[INDEX_MCP] + hand_3d[PINKY_MCP]) / 2.0
+    centered = hand_3d - mcp_center
+    rotated = rotate_hand_3d(centered, pitch_deg, yaw_deg, roll_deg) + mcp_center
 
     # Random slight translation so hand isn't perfectly dead center
     offset_x = float(rng.uniform(-2.5, 2.5))
@@ -222,37 +248,6 @@ def simulate_hand_frame(
     return landmarks, sharpness, confidence
 
 
-def compute_synthetic_label(
-    distance_cm: float,
-    focal_px: float,
-    pad_facing_cos: float,
-    mean_sharpness: float,
-    rng: np.random.Generator,
-    ppi_low: float = 150.0,
-    ppi_high: float = 400.0,
-    warning_threshold: float = 0.4,
-    danger_threshold: float = 0.7,
-    noise_std: float = 0.04,
-) -> tuple[float, str, float]:
-    """Compute ground-truth label using true physics + pad angle + sharpness + noise.
-
-    Returns:
-        (true_ppi, risk_label, state_label)
-    """
-    true_ppi = 2.54 * focal_px / max(distance_cm, 1.0)
-    base_risk = ppi_to_risk(true_ppi, ppi_low=ppi_low, ppi_high=ppi_high)
-
-    # If pads are angled far away from camera, print capture risk decreases
-    facing_factor = max(0.0, pad_facing_cos) if pad_facing_cos is not None else 1.0
-    # Moderate facing factor influence (physics alone would oversimplify)
-    adjusted_risk = base_risk * (0.3 + 0.7 * facing_factor)
-
-    # Add label noise so model isn't just an exact algebraic mirror of 1 variable
-    noisy_risk = float(np.clip(adjusted_risk + rng.normal(0, noise_std), 0.0, 1.0))
-    state = risk_to_state(noisy_risk, warning_threshold=warning_threshold, danger_threshold=danger_threshold)
-    return true_ppi, noisy_risk, state
-
-
 def generate_synthetic_dataset(
     *,
     config: AppConfig | None = None,
@@ -278,6 +273,12 @@ def generate_synthetic_dataset(
     ppi_high = cfg.risk.ppi_high
     warn_th = cfg.risk.warning_threshold
     dang_th = cfg.risk.danger_threshold
+    sharp_ref = cfg.labeling.sharpness_ref
+    noise_sigma = cfg.labeling.noise_sigma
+    dist_min = cfg.training.synthetic_distance_min_cm
+    dist_close_max = cfg.training.synthetic_distance_close_max_cm
+    dist_far_max = cfg.training.synthetic_distance_far_max_cm
+    close_weight = cfg.training.synthetic_distance_close_weight
 
     # Camera configurations: 720p webcam, 1080p webcam, 4K phone, 1080p phone
     camera_presets = [
@@ -308,13 +309,17 @@ def generate_synthetic_dataset(
             primary_hand = "Right" if rng.random() > 0.4 else "Left"
 
             for frame_idx in range(num_frames):
-                # Sample distance uniformly across very close (15cm) to far (80cm)
-                distance_cm = float(rng.uniform(15.0, 80.0))
+                # Sample distance in ~8-60 cm with extra weight on 8-30 cm
+                if rng.random() < close_weight:
+                    distance_cm = float(rng.uniform(dist_min, dist_close_max))
+                else:
+                    distance_cm = float(rng.uniform(dist_close_max, dist_far_max))
 
-                # Slight hand pitch/yaw/roll variations
-                pitch = float(rng.normal(0, 15.0))
-                yaw = float(rng.normal(0, 20.0))
-                roll = float(rng.normal(0, 10.0))
+                # Hand pitch/yaw/roll variations clipped to realistic presentation angles (<= 45 deg)
+                # to prevent extreme palm foreshortening where fingers turn away from camera
+                pitch = float(np.clip(rng.normal(0, 12.0), -45.0, 45.0))
+                yaw = float(np.clip(rng.normal(0, 15.0), -45.0, 45.0))
+                roll = float(np.clip(rng.normal(0, 8.0), -30.0, 30.0))
 
                 # Occasional opposite hand
                 hand = primary_hand if rng.random() > 0.15 else ("Left" if primary_hand == "Right" else "Right")
@@ -330,6 +335,7 @@ def generate_synthetic_dataset(
                     hfov_deg=hfov,
                     camera_type=cam_type,
                     rng=rng,
+                    palm_width_cm=subj_palm_cm,
                 )
 
                 # Extract features using the production feature extractor
@@ -346,20 +352,16 @@ def generate_synthetic_dataset(
                     camera_type=cam_type,
                 )
 
-                # Ground truth physics label with realistic variations
-                pad_cos = features.get("pad_facing_cos") or 1.0
-                mean_sharp = features.get("mean_sharpness") or 0.0
-
-                true_ppi, risk_label, state_label = compute_synthetic_label(
-                    distance_cm=distance_cm,
-                    focal_px=f_px,
-                    pad_facing_cos=pad_cos,
-                    mean_sharpness=mean_sharp,
-                    rng=rng,
+                true_ppi = 2.54 * f_px / max(distance_cm, 1.0)
+                labeled = label_row(
+                    features,
                     ppi_low=ppi_low,
                     ppi_high=ppi_high,
                     warning_threshold=warn_th,
                     danger_threshold=dang_th,
+                    sharpness_ref=sharp_ref,
+                    noise_sigma=noise_sigma,
+                    rng=rng,
                 )
 
                 row: dict[str, Any] = {
@@ -369,9 +371,7 @@ def generate_synthetic_dataset(
                     "frame_idx": frame_idx,
                     "true_distance_cm": distance_cm,
                     "true_ppi": true_ppi,
-                    "risk_label": risk_label,
-                    "state_label": state_label,
-                    **features,
+                    **labeled,
                 }
                 records.append(row)
 

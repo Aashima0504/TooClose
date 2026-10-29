@@ -62,6 +62,8 @@ risk:
 labeling:
   source: physics  # physics | nfiq
   nfiq_binary: null
+  sharpness_ref: 100.0  # reference sharpness for clarity factor
+  noise_sigma: 0.05     # Gaussian label noise standard deviation
 
 training:
   n_estimators: 200
@@ -72,6 +74,11 @@ training:
   synthetic_subjects: 40
   synthetic_sessions_per_subject: 4
   synthetic_frames_per_session: 40
+  # Synthetic distance sampling (cm): roughly 8-60 cm with extra weight on 8-30 cm
+  synthetic_distance_min_cm: 8.0
+  synthetic_distance_close_max_cm: 30.0
+  synthetic_distance_far_max_cm: 60.0
+  synthetic_distance_close_weight: 0.85
 
 paths:
   data_dir: data

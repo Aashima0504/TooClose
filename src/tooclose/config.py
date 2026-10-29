@@ -62,6 +62,8 @@ class RiskConfig(BaseModel):
 class LabelingConfig(BaseModel):
     source: Literal["physics", "nfiq"] = "physics"
     nfiq_binary: str | None = None
+    sharpness_ref: float = 100.0
+    noise_sigma: float = 0.05
 
 
 class TrainingConfig(BaseModel):
@@ -73,6 +75,10 @@ class TrainingConfig(BaseModel):
     synthetic_subjects: int = 40
     synthetic_sessions_per_subject: int = 4
     synthetic_frames_per_session: int = 40
+    synthetic_distance_min_cm: float = 8.0
+    synthetic_distance_close_max_cm: float = 30.0
+    synthetic_distance_far_max_cm: float = 60.0
+    synthetic_distance_close_weight: float = 0.85
 
 
 class PathsConfig(BaseModel):

@@ -210,3 +210,20 @@ see pixels. Python sharpness is for collection, debug, and the agreement test.
 | `mirrored` | 1 if landmarks came from a selfie-mirrored frame |
 
 Fingers: `thumb`, `index`, `middle`, `ring`, `pinky`.
+
+## 9. Labeling Assumptions and Physics Model
+
+Ground-truth risk labels in `tooclose.labeling` combine three factors rather than relying purely on ppi:
+
+1. **Estimated PPI Risk**: Base risk curve from pinhole geometry (`ppi_low` to `ppi_high`).
+2. **Sharpness Clarity Factor**:
+   $$\text{factor}_{\text{sharp}} = \text{clip}\left(\frac{\text{sharpness}}{\text{sharpness\_ref}}, 0.3, 1.0\right)$$
+   Fingerprints cannot be recovered from blurry crops regardless of proximity.
+3. **Pad-Facing Factor**:
+   $$\text{factor}_{\text{facing}} = 0.4 + 0.6 \times \max(0, \cos(\theta_{\text{facing}}))$$
+   Fingerprints cannot be acquired if the pads face away from the optical axis.
+4. **Gaussian Noise**: $\mathcal{N}(0, \sigma^2)$ is added to model sensor noise and biometric variance.
+
+> [!NOTE]
+> These labels represent assumed optical physics and capture geometry, **not** empirically measured fingerprint quality from an AFIS or NFIQ 2 matcher. They prevent the supervised model from circularly relearning a one-dimensional formula while approximating the multi-factor reality of biometric exposure.
+
